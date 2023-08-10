@@ -1,0 +1,54 @@
+#!/bin/bash
+
+#set -x
+
+JOB_FILE="$HOME/.ssbatch_job_number"
+
+cleanup() {
+    # Remove temporary script if it exists
+    [[ -n "$temp_script" && -f "$temp_script" ]] && rm -f "$temp_script"
+    echo "Interrupt received. Exiting."
+    exit 1
+}
+
+# Ensure required utilities are available
+for util in squeue sallocfromsbatch sed bash; do
+    command -v $util &>/dev/null || { echo "$util not found"; exit 1; }
+done
+
+# Trap the SIGINT signal (CTRL+C)
+trap cleanup SIGINT
+
+is_job_active() {
+    squeue -h -j "$1" &> /dev/null
+    return $?
+}
+
+# Check if there's an existing job number and it's active
+if ! is_job_active $(cat "$JOB_FILE" 2>/dev/null); then
+
+    rm -f "$JOB_FILE" 
+
+    alloc_output=$(sallocfromsbatch --no-shell "$1" 2>&1)
+    job_number=$(echo "$alloc_output" | grep -oP 'Granted job allocation \K\d+')
+
+    [[ -z "$job_number" ]] && { echo "Failed to get job number. Exiting."; exit 1; }
+
+    echo "$job_number" > "$JOB_FILE"
+
+else
+    job_number=$(cat "$JOB_FILE")
+fi
+
+# Create a temp script, replacing srun commands with specific jobid
+temp_script=$(mktemp $PWD/ssbatch_XXXXXX.sh)
+sed "/srun / s//srun --jobid=$job_number /g" "$1" > "$temp_script"
+
+unset SLURM_JOBID
+
+echo "Executing script with allocated resources..."
+(bash "$temp_script")
+
+# Cleanup
+rm -f "$temp_script"
+

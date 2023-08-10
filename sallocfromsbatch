@@ -1,0 +1,72 @@
+#!/bin/bash
+
+#set -x
+
+usage() {
+    echo "Usage: sallocfromsbatch [-t |--time=time_value] <file.sbatch>"
+    exit 2
+}
+
+if [[ $# -lt 1 ]]; then
+    usage
+fi
+
+extra_arg=""
+time_value=""
+
+while (( "$#" )) ; do
+  case "$1" in
+    --no-shell  ) extra_arg="--no-shell"; shift ;;   
+    -h | --help ) usage                    ;;   
+    -t          ) time_value="$2"; shift 2 ;;
+    --time* ) 
+         OPTARG=$(echo $1 | cut -d'=' -f2)
+         OPTION=$(echo $1 | cut -d'=' -f1)
+         case $OPTION in
+             --time ) time_value="$OPTARG" ;;
+                  * ) usage                ;;
+         esac
+         shift
+         ;;
+     * ) if [[ -z "$sbatch_file" ]]; then
+            sbatch_file="$1"
+	    shift
+         else
+            usage
+         fi
+       ;;
+  esac
+done
+
+if [[ -z "$sbatch_file" ]]; then
+    usage
+fi
+
+valid_salloc_commands=$(salloc --help | tr ',' '\n' | sed 's/^ *//g' | grep -Po "^[-]+[^\s=\[\]\{\}\(\)]+" )
+valid_salloc_commands="${valid_salloc_commands}"$'\n'"hetjob"
+
+valid_launch_parameters=$(grep -Po "(?<=^#SBATCH)[^#]+" "$sbatch_file" | grep -Ff <(echo "$valid_salloc_commands") )
+
+# modify / add time if time_value is present
+if [[ ! -z "$time_value" ]]; then
+    valid_launch_parameters=$(echo "$valid_launch_parameters" | sed -e "s/-t .*   /-t $time_value/g" \
+                                                                    -e "s/--time.*/--time=$time_value/g" )
+    if ! $( echo "$valid_launch_parameters" | grep -qE " \-t | \--time" ); then
+        valid_launch_parameters="$valid_launch_parameters --time=$time_value"
+    fi
+fi
+
+valid_launch_parameters=$(echo "$valid_launch_parameters" | tr '\n' ' ' | sed 's/  */ /g' | sed 's/hetjob/:/g')
+
+invalid_launch_parameters=$(grep -Po "(?<=^#SBATCH)[^#]+" "$sbatch_file" | \
+			    grep -vFf <(echo "$valid_salloc_commands") | \
+                            tr '\n' ' ' | sed 's/  */ /g')
+
+
+echo "sallocfromsbatch $sbatch_file"
+echo ""
+echo "    ignoring launch parameters invalid for 'salloc': \"$invalid_launch_parameters\""
+echo "    executing: \"salloc ${extra_arg} $valid_launch_parameters\""
+
+salloc ${extra_arg} $valid_launch_parameters
+
