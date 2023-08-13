@@ -25,7 +25,7 @@ is_job_active() {
 }
 
 # Check if there's an existing job number and it's active
-if ! is_job_active $(cat "$JOB_FILE" 2>/dev/null); then
+if ! test -f $JOB_FILE || ! is_job_active $(cat "$JOB_FILE" 2>/dev/null); then
 
     rm -f "$JOB_FILE" 
 
