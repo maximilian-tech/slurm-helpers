@@ -3,8 +3,10 @@
 set -euo pipefail
 
 export DIR='WorkDir'
+#export DIR='StdOut'
 export PATHPAT='/home/'
 
+echo "Show jobs with '"${DIR}"' starting with '"${PATHPAT}"'."
 echo "Active (Running) Jobs:"
 
 scontrol show job \
