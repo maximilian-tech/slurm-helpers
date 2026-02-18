@@ -1,9 +1,11 @@
-#!/bin/env bash
+#!/bin/env -S bash --noprofile --norc
 
 set -euo pipefail
 
 export DIR='WorkDir'
 export PATHPAT='/home/'
+
+echo "Active (Running) Jobs:"
 
 scontrol show job \
 	| awk -v RS= -v ORS="\n\n" -v dir="$DIR" -v path="$PATHPAT" '$0 ~ (dir "=" path) && match($0, /RunTime=([0-9:-]+)/, a) && a[1] != "00:00:00"' \
@@ -13,3 +15,17 @@ scontrol show job \
 	| sort \
 	| uniq -c \
 	| sort -nr
+
+echo "Scheduled Jobs:"
+
+scontrol show job \
+	| awk -v RS= -v ORS="\n\n" -v dir="$DIR" -v path="$PATHPAT" '$0 ~ (dir "=" path) ' \
+	| grep -P "UserId=|RunTime=|$DIR=$PATHPAT" \
+	| grep -B 2 "$DIR=$PATHPAT" \
+	| grep "UserId" \
+	| sort \
+	| uniq -c \
+	| sort -nr
+
+
+
